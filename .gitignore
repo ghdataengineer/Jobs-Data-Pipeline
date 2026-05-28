@@ -1,0 +1,70 @@
+# =========================
+# PYTHON
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# =========================
+# VIRTUAL ENV
+# =========================
+venv/
+.venv/
+env/
+
+# =========================
+# IDEs
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# SYSTEM FILES
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# LOGS
+# =========================
+*.log
+
+# =========================
+# ENV FILES
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# DATA LAKE (OPCIONAL)
+# =========================
+# Se quiser mostrar dados no GitHub, comente essas linhas
+data_lake/raw/
+data_lake/clean/
+
+# manter curated é bom para portfólio
+# data_lake/curated/
+
+# =========================
+# DATABASE FILES
+# =========================
+*.sqlite
+*.db
+
+# =========================
+# DOCKER
+# =========================
+docker-compose.override.yml
+
+# =========================
+# TEST / CACHE
+# =========================
+.pytest_cache/
+.cache/
+
+# =========================
+# JUPYTER
+# =========================
+.ipynb_checkpoints/
