@@ -12,6 +12,7 @@ def run():
     print(f"END_DATE:   {END_DATE}")
     print(f"MAX_JOBS:   {MAX_JOBS}")
     print("=" * 50)
+   
 
     pipeline = JobsPipeline(max_jobs=MAX_JOBS)
     pipeline.run()

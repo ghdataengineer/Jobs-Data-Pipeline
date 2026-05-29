@@ -5,38 +5,50 @@ services:
   etl:
     build: .
     container_name: jobs_etl
+
     depends_on:
       - postgres
+
     volumes:
       - .:/app
+
     environment:
       - PYTHONUNBUFFERED=1
+
+    restart: "no"   # 🔥 importante: ETL não deve ficar rodando sempre
 
   postgres:
     image: postgres:15
     container_name: jobs_postgres
     restart: always
+
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin
       POSTGRES_DB: jobs_db
+
     ports:
       - "5432:5432"
+
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./database:/docker-entrypoint-initdb.d
 
   grafana:
     image: grafana/grafana:latest
     container_name: jobs_grafana
     restart: always
+
     ports:
       - "3000:3000"
+
     depends_on:
       - postgres
+
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
+
     volumes:
       - grafana_data:/var/lib/grafana
 

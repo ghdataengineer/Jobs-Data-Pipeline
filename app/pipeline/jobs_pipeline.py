@@ -15,61 +15,100 @@ class JobsPipeline:
         self.storage_path = storage_path
 
     def run(self):
-        extractor  = JobsExtractor(self.max_jobs)
-        clean_jobs = extractor.extract()
 
-        date = datetime.now().strftime("%Y-%m-%d")
+        try:
+            # =========================
+            # EXTRACT
+            # =========================
+            extractor = JobsExtractor(self.max_jobs)
+            clean_jobs = extractor.extract() or []
 
-        print(f"\n===== CLEAN =====")
-        print(f"JOBS: {len(clean_jobs)}")
+            date = datetime.now().strftime("%Y-%m-%d")
 
-        raw_path = f"{self.storage_path}/raw/jobs_{date}.json"
-        os.makedirs(os.path.dirname(raw_path), exist_ok=True)
-        save_json(clean_jobs, raw_path)
+            print(f"\n===== CLEAN =====")
+            print(f"JOBS: {len(clean_jobs)}")
 
-        clean_path = f"{self.storage_path}/clean/jobs_{date}.json"
-        os.makedirs(os.path.dirname(clean_path), exist_ok=True)
-        save_json(clean_jobs, clean_path)
+            # =========================
+            # STORAGE (RAW + CLEAN)
+            # =========================
+            raw_path = f"{self.storage_path}/raw/jobs_{date}.json"
+            clean_path = f"{self.storage_path}/clean/jobs_{date}.json"
 
-        curated_by_category = JobsCuratedService.build_by_category(clean_jobs)
-        curated_by_company  = JobsCuratedService.build_by_company(clean_jobs)
-        curated_by_date     = JobsCuratedService.build_by_date(clean_jobs)
+            os.makedirs(os.path.dirname(raw_path), exist_ok=True)
 
-        print("\n🚨 CURATED")
-        print("CATEGORY:", len(curated_by_category))
-        print("COMPANY:",  len(curated_by_company))
-        print("DATE:",     len(curated_by_date))
+            save_json(clean_jobs, raw_path)
+            save_json(clean_jobs, clean_path)
 
-        curated_dir = f"{self.storage_path}/curated"
-        os.makedirs(curated_dir, exist_ok=True)
-        save_json(curated_by_category, f"{curated_dir}/category_{date}.json")
-        save_json(curated_by_company,  f"{curated_dir}/company_{date}.json")
-        save_json(curated_by_date,     f"{curated_dir}/date_{date}.json")
+            # =========================
+            # CURATED (SIMPLIFICADO)
+            # =========================
+            curated_jobs = JobsCuratedService.build(clean_jobs) or []
 
-        company_list = []
-        for j in clean_jobs:
-            company = j.get("company")
-            if isinstance(company, dict):
-                company = company.get("name") or company.get("company")
-            if isinstance(company, list):
-                company = next((c for c in company if c), None)
-            if not isinstance(company, str) or not company.strip():
-                continue
-            company_list.append({"name": company.strip(), "logo_url": None, "website": None, "url": None})
+            print("\n🚨 CURATED")
+            print("JOBS:", len(curated_jobs))
 
-        unique_companies = list({c["name"]: c for c in company_list}.values())
-        if unique_companies:
-            CompanyRepository.insert_companies(unique_companies)
+            curated_dir = f"{self.storage_path}/curated"
+            os.makedirs(curated_dir, exist_ok=True)
 
-        print("\n🚀 SALVANDO CURATED NO POSTGRES...")
-        if curated_by_category:
-            JobsRepository.insert_curated(curated_by_category)
-        if curated_by_company:
-            JobsRepository.insert_curated(curated_by_company)
-        if curated_by_date:
-            JobsRepository.insert_curated(curated_by_date)
+            save_json(curated_jobs, f"{curated_dir}/jobs_{date}.json")
 
-        print("\n📊 RESUMO FINAL")
-        print("CLEAN:",     len(clean_jobs))
-        print("COMPANIES:", len(unique_companies))
-        print("\n✅ PIPELINE FINALIZADO COM SUCESSO")
+            # =========================
+            # COMPANIES NORMALIZATION
+            # =========================
+            company_list = []
+
+            for j in clean_jobs:
+
+                company = j.get("company")
+
+                # dict
+                if isinstance(company, dict):
+                    company = company.get("name") or company.get("company")
+
+                # list
+                elif isinstance(company, list):
+                    company = next(
+                        (c for c in company if isinstance(c, str) and c.strip()),
+                        None
+                    )
+
+                # string final
+                if isinstance(company, str) and company.strip():
+                    company_list.append({
+                        "name": company.strip(),
+                        "logo_url": None,
+                        "website": None,
+                        "url": None
+                    })
+
+            unique_companies = list(
+                {c["name"]: c for c in company_list}.values()
+            )
+
+            if unique_companies:
+                CompanyRepository.insert_companies(unique_companies)
+
+            # =========================
+            # POSTGRES (GOLD LAYER)
+            # =========================
+            print("\n🚀 SALVANDO NO POSTGRES...")
+
+            inserted_curated = 0
+
+            if curated_jobs:
+                inserted_curated = JobsRepository.insert_curated(curated_jobs)
+
+            # =========================
+            # FINAL REPORT
+            # =========================
+            print("\n📊 RESUMO FINAL")
+            print("CLEAN:", len(clean_jobs))
+            print("COMPANIES:", len(unique_companies))
+            print("CURATED:", inserted_curated)
+
+            print("\n✅ PIPELINE FINALIZADO COM SUCESSO")
+
+        except Exception as e:
+            print("\n❌ PIPELINE FAILED")
+            print(f"ERROR: {e}")
+            raise

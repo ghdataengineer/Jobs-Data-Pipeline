@@ -1,76 +1,197 @@
-import json
-
+import uuid
+from psycopg2.extras import execute_values, Json
 from app.db.postgres import get_connection
 
 
 class JobsRepository:
 
+    # =========================================
+    # RAW LAYER (BRONZE)
+    # =========================================
     @staticmethod
     def save_jobs_raw(jobs):
+
+        if not jobs:
+            return None
+
         conn = get_connection()
         cursor = conn.cursor()
-        inserted = 0
+
+        ingestion_id = str(uuid.uuid4())
 
         try:
+            values = []
+
             for job in jobs:
-                payload = json.dumps(job)
-                cursor.execute("""
-                    INSERT INTO jobs_raw (source_name, source_url, payload, ingestion_time)
-                    VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
-                """, (
+
+                values.append((
+                    ingestion_id,
+                    job.get("title"),
+                    job.get("company"),
                     job.get("source_name"),
+                    job.get("source_type"),
                     job.get("source_url"),
-                    payload,
+                    job.get("location"),
+
+                    # 🔥 JSON COMPLETO SEM PERDER NADA
+                    Json(job)
                 ))
-                inserted += cursor.rowcount
+
+            execute_values(
+                cursor,
+                """
+                INSERT INTO jobs_raw (
+                    ingestion_id,
+                    title,
+                    company,
+                    source_name,
+                    source_type,
+                    source_url,
+                    location,
+                    payload
+                )
+                VALUES %s
+                """,
+                values
+            )
 
             conn.commit()
-            print(f"\nInserted RAW jobs: {inserted}")
-            return inserted
+
+            print(f"\n[RAW] Inserted jobs: {len(values)}")
+            print(f"[RAW] Ingestion ID: {ingestion_id}")
+
+            return ingestion_id
 
         except Exception as e:
             conn.rollback()
-            raise e
+            print(f"[RAW] Error: {e}")
+            raise
 
         finally:
             cursor.close()
             conn.close()
 
+    # =========================================
+    # SILVER LAYER (NORMALIZADO)
+    # =========================================
     @staticmethod
-    def insert_curated(records: list):
+    def insert_processed(records: list):
+
         if not records:
-            return
+            return 0
 
         conn = get_connection()
         cursor = conn.cursor()
-        inserted = 0
 
         try:
+            values = []
+
             for record in records:
-                category = record.get("category")
-                company  = record.get("company")
-                total    = record.get("total_jobs", 0)
 
-                # Só envia date se for uma data válida (YYYY-MM-DD), senão NULL
-                raw_date = record.get("date")
-                if raw_date and raw_date != "unknown" and len(raw_date) == 10:
-                    job_date = raw_date
-                else:
-                    job_date = None
+                title = record.get("title")
+                company = record.get("company")
+                location = record.get("location")
+                job_url = record.get("job_url")
 
-                cursor.execute("""
-                    INSERT INTO jobs_curated (category, company, job_date, total_jobs)
-                    VALUES (%s, %s, %s, %s)
-                """, (category, company, job_date, total))
-                inserted += cursor.rowcount
+                # 🔥 normalização de company (dict ou string)
+                if isinstance(company, dict):
+                    company = company.get("name") or company.get("company")
+
+                if not title or not company:
+                    continue
+
+                values.append((
+                    title,
+                    company,
+                    location,
+                    job_url
+                ))
+
+            execute_values(
+                cursor,
+                """
+                INSERT INTO jobs_processed (
+                    title,
+                    company,
+                    location,
+                    job_url
+                )
+                VALUES %s
+                """,
+                values
+            )
 
             conn.commit()
-            print(f"Inserted CURATED records: {inserted}")
-            return inserted
+
+            print(f"[SILVER] Inserted records: {len(values)}")
+
+            return len(values)
 
         except Exception as e:
             conn.rollback()
-            raise e
+            print(f"[SILVER] Error: {e}")
+            raise
+
+        finally:
+            cursor.close()
+            conn.close()
+
+    # =========================================
+    # GOLD LAYER (CURATED / ANALYTICS)
+    # =========================================
+    @staticmethod
+    def insert_curated(records: list):
+
+        if not records:
+            return 0
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        try:
+            values = []
+
+            for record in records:
+
+                title = record.get("title")
+                company = record.get("company")
+                job_url = record.get("job_url")
+
+                if isinstance(company, dict):
+                    company = company.get("name") or company.get("company")
+
+                if not title or not company:
+                    continue
+
+                values.append((
+                    title,
+                    company,
+                    job_url
+                ))
+
+            execute_values(
+                cursor,
+                """
+                INSERT INTO jobs_curated (
+                    title,
+                    company,
+                    job_url
+                )
+                VALUES %s
+                """,
+                values
+            )
+
+            conn.commit()
+
+            print(f"[CURATED] Inserted records: {len(values)}")
+
+            return len(values)
+
+        except Exception as e:
+            conn.rollback()
+            print(f"[CURATED] Error: {e}")
+            raise
 
         finally:
             cursor.close()

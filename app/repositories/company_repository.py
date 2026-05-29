@@ -1,3 +1,4 @@
+from psycopg2.extras import execute_values
 from app.db.postgres import get_connection
 
 
@@ -6,37 +7,83 @@ class CompanyRepository:
     @staticmethod
     def insert_companies(companies):
 
+        if not companies:
+            return 0
+
         conn = get_connection()
         cur = conn.cursor()
 
-        for company in companies:
+        try:
+            values = []
 
-            name = company.get("name")
-            logo_url = company.get("logo_url")
-            website = company.get("website")
-            url = company.get("url")
+            for company in companies:
 
-            # 🔥 SANITIZAÇÃO (resolve seu erro)
-            if isinstance(logo_url, dict):
-                logo_url = logo_url.get("url")
+                name = company.get("name")
 
-            if isinstance(website, dict):
-                website = website.get("value")
+                if not name:
+                    continue
 
-            if isinstance(url, dict):
-                url = url.get("url")
+                logo_url = company.get("logo_url")
+                website = company.get("website")
+                url = company.get("url")
 
-            cur.execute("""
-                INSERT INTO dim_company (name, logo_url, website, url)
-                VALUES (%s, %s, %s, %s)
+                # =========================
+                # SANITIZAÇÃO ROBUSTA
+                # =========================
+                logo_url = CompanyRepository._normalize_field(logo_url)
+                website = CompanyRepository._normalize_field(website)
+                url = CompanyRepository._normalize_field(url)
+
+                values.append((
+                    name,
+                    logo_url,
+                    website,
+                    url
+                ))
+
+            if not values:
+                return 0
+
+            execute_values(
+                cur,
+                """
+                INSERT INTO dim_company (
+                    name,
+                    logo_url,
+                    website,
+                    url
+                )
+                VALUES %s
                 ON CONFLICT (name) DO NOTHING
-            """, (
-                name,
-                logo_url,
-                website,
-                url
-            ))
+                """,
+                values
+            )
 
-        conn.commit()
-        cur.close()
-        conn.close()
+            conn.commit()
+
+            print(f"[COMPANY] Inserted: {len(values)}")
+
+            return len(values)
+
+        except Exception as e:
+            conn.rollback()
+            print(f"[COMPANY] Error: {e}")
+            raise
+
+        finally:
+            cur.close()
+            conn.close()
+
+    # =========================================
+    # NORMALIZAÇÃO SEGURA
+    # =========================================
+    @staticmethod
+    def _normalize_field(value):
+
+        if isinstance(value, dict):
+            return value.get("url") or value.get("value") or None
+
+        if isinstance(value, list):
+            return value[0] if value else None
+
+        return value
