@@ -1,5 +1,7 @@
 import uuid
+
 from psycopg2.extras import execute_values, Json
+
 from app.db.postgres import get_connection
 
 
@@ -20,6 +22,7 @@ class JobsRepository:
         ingestion_id = str(uuid.uuid4())
 
         try:
+
             values = []
 
             for job in jobs:
@@ -32,8 +35,6 @@ class JobsRepository:
                     job.get("source_type"),
                     job.get("source_url"),
                     job.get("location"),
-
-                    # 🔥 JSON COMPLETO SEM PERDER NADA
                     Json(job)
                 ))
 
@@ -63,11 +64,13 @@ class JobsRepository:
             return ingestion_id
 
         except Exception as e:
+
             conn.rollback()
             print(f"[RAW] Error: {e}")
             raise
 
         finally:
+
             cursor.close()
             conn.close()
 
@@ -84,6 +87,7 @@ class JobsRepository:
         cursor = conn.cursor()
 
         try:
+
             values = []
 
             for record in records:
@@ -93,7 +97,6 @@ class JobsRepository:
                 location = record.get("location")
                 job_url = record.get("job_url")
 
-                # 🔥 normalização de company (dict ou string)
                 if isinstance(company, dict):
                     company = company.get("name") or company.get("company")
 
@@ -106,6 +109,9 @@ class JobsRepository:
                     location,
                     job_url
                 ))
+
+            if not values:
+                return 0
 
             execute_values(
                 cursor,
@@ -123,16 +129,20 @@ class JobsRepository:
 
             conn.commit()
 
-            print(f"[SILVER] Inserted records: {len(values)}")
+            inserted = len(values)
 
-            return len(values)
+            print(f"[SILVER] Inserted records: {inserted}")
+
+            return inserted
 
         except Exception as e:
+
             conn.rollback()
             print(f"[SILVER] Error: {e}")
             raise
 
         finally:
+
             cursor.close()
             conn.close()
 
@@ -149,6 +159,7 @@ class JobsRepository:
         cursor = conn.cursor()
 
         try:
+
             values = []
 
             for record in records:
@@ -160,7 +171,7 @@ class JobsRepository:
                 if isinstance(company, dict):
                     company = company.get("name") or company.get("company")
 
-                if not title or not company:
+                if not title or not company or not job_url:
                     continue
 
                 values.append((
@@ -168,6 +179,9 @@ class JobsRepository:
                     company,
                     job_url
                 ))
+
+            if not values:
+                return 0
 
             execute_values(
                 cursor,
@@ -178,21 +192,28 @@ class JobsRepository:
                     job_url
                 )
                 VALUES %s
+                ON CONFLICT (job_url)
+                DO NOTHING
                 """,
                 values
             )
 
+            inserted = cursor.rowcount
+
             conn.commit()
 
-            print(f"[CURATED] Inserted records: {len(values)}")
+            print(f"[CURATED] Inserted records: {inserted}")
+            print(f"[CURATED] Ignored duplicates: {len(values) - inserted}")
 
-            return len(values)
+            return inserted
 
         except Exception as e:
+
             conn.rollback()
             print(f"[CURATED] Error: {e}")
             raise
 
         finally:
+
             cursor.close()
             conn.close()

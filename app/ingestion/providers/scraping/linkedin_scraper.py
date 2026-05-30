@@ -21,10 +21,13 @@ class LinkedInScraper(BaseProvider):
 
     def fetch_jobs(self) -> list:
 
-        keyword = os.getenv(
-            "JOB_KEYWORDS",
-            "data engineer"
-        )
+        keywords = [
+            k.strip()
+            for k in os.getenv(
+                "JOB_KEYWORDS",
+                "data engineer"
+            ).split(",")
+        ]
 
         location = os.getenv(
             "JOB_LOCATION",
@@ -34,97 +37,112 @@ class LinkedInScraper(BaseProvider):
         max_jobs = int(
             os.getenv(
                 "MAX_JOBS",
-                200
+                "200"
             )
         )
 
         jobs = []
-        start = 0
 
-        while len(jobs) < max_jobs:
+        for keyword in keywords:
 
-            params = {
-                "keywords": keyword,
-                "location": location,
-                "start": start,
-            }
+            print(f"\n[SCRAPER] Buscando por: {keyword}")
 
-            url = (
-                f"{self.BASE_URL}?"
-                f"{urlencode(params)}"
-            )
+            start = 0
 
-            print(f"[SCRAPER] Coletando: {url}")
+            while len(jobs) < max_jobs:
 
-            response = requests.get(
-                url,
-                headers=self.HEADERS,
-                timeout=30
-            )
-
-            response.raise_for_status()
-
-            soup = BeautifulSoup(
-                response.text,
-                "html.parser"
-            )
-
-            cards = soup.select(".base-card")
-
-            if not cards:
-                print(
-                    "[SCRAPER] Nenhuma vaga encontrada."
-                )
-                break
-
-            for card in cards:
-
-                title_el = card.select_one(
-                    ".base-search-card__title"
-                )
-
-                company_el = card.select_one(
-                    ".base-search-card__subtitle"
-                )
-
-                location_el = card.select_one(
-                    ".job-search-card__location"
-                )
-
-                link_el = card.select_one(
-                    "a.base-card__full-link"
-                )
-
-                job = {
-                    "title": (
-                        title_el.text.strip()
-                        if title_el else None
-                    ),
-                    "company_name": (
-                        company_el.text.strip()
-                        if company_el else None
-                    ),
-                    "location": (
-                        location_el.text.strip()
-                        if location_el else None
-                    ),
-                    "job_url": (
-                        link_el["href"]
-                        if link_el else None
-                    ),
-                    "source_type": "scraping",
+                params = {
+                    "keywords": keyword,
+                    "location": location,
+                    "start": start,
                 }
 
-                jobs.append(job)
+                url = (
+                    f"{self.BASE_URL}?"
+                    f"{urlencode(params)}"
+                )
+
+                print(
+                    f"[SCRAPER] Coletando: {url}"
+                )
+
+                response = requests.get(
+                    url,
+                    headers=self.HEADERS,
+                    timeout=30
+                )
+
+                response.raise_for_status()
+
+                soup = BeautifulSoup(
+                    response.text,
+                    "html.parser"
+                )
+
+                cards = soup.select(
+                    ".base-card"
+                )
+
+                if not cards:
+                    print(
+                        f"[SCRAPER] Nenhuma vaga encontrada para '{keyword}'."
+                    )
+                    break
+
+                for card in cards:
+
+                    title_el = card.select_one(
+                        ".base-search-card__title"
+                    )
+
+                    company_el = card.select_one(
+                        ".base-search-card__subtitle"
+                    )
+
+                    location_el = card.select_one(
+                        ".job-search-card__location"
+                    )
+
+                    link_el = card.select_one(
+                        "a.base-card__full-link"
+                    )
+
+                    job = {
+                        "title": (
+                            title_el.text.strip()
+                            if title_el else None
+                        ),
+                        "company_name": (
+                            company_el.text.strip()
+                            if company_el else None
+                        ),
+                        "location": (
+                            location_el.text.strip()
+                            if location_el else None
+                        ),
+                        "job_url": (
+                            link_el["href"]
+                            if link_el else None
+                        ),
+                        "source_type": "scraping",
+                    }
+
+                    jobs.append(job)
+
+                    if len(jobs) >= max_jobs:
+                        break
+
+                print(
+                    f"[SCRAPER] Total coletado: {len(jobs)}"
+                )
 
                 if len(jobs) >= max_jobs:
                     break
 
-            print(
-                f"[SCRAPER] Total coletado: "
-                f"{len(jobs)}"
-            )
+                start += 25
 
-            start += 25
+        print(
+            f"\n[SCRAPER] Total final coletado: {len(jobs)}"
+        )
 
         return jobs
