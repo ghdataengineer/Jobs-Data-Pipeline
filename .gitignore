@@ -45,7 +45,7 @@ data_lake/raw/
 data_lake/clean/
 
 # manter curated é bom para portfólio
-# data_lake/curated/
+## data_lake/curated/
 
 # =========================
 # DATABASE FILES
